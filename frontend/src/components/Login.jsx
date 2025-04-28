@@ -18,7 +18,7 @@ export default function Login() {
     setForm({ ...form, [e.target.name]: e.target.value });
 
   const handleSubmit = async e => {
-    e.preventDefault();
+    e.preventDefault();        // prevent HTML5 validation
     try {
       const { data } = await login(form);
       localStorage.setItem('token', data.token);
@@ -29,7 +29,7 @@ export default function Login() {
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} noValidate>
       <h2>Login</h2>
       <input
         name="username"
@@ -44,7 +44,7 @@ export default function Login() {
         placeholder="Password"
         value={form.password}
         onChange={handleChange}
-        required
+        /* removed `required` so SQL-injection payloads can submit with blank password */
       />
       <button type="submit">Log In</button>
     </form>
