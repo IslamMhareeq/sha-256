@@ -1,10 +1,18 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';        // ← for programmatic navigation :contentReference[oaicite:0]{index=0}
+// src/components/Login.jsx
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { login } from '../services/api';
 
 export default function Login() {
   const [form, setForm] = useState({ username: '', password: '' });
   const navigate = useNavigate();
+
+  // If already logged in, redirect to dashboard
+  useEffect(() => {
+    if (localStorage.getItem('token')) {
+      navigate('/dashboard');
+    }
+  }, [navigate]);
 
   const handleChange = e =>
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -14,7 +22,7 @@ export default function Login() {
     try {
       const { data } = await login(form);
       localStorage.setItem('token', data.token);
-      navigate('/dashboard');                         // ← redirect on success :contentReference[oaicite:1]{index=1}
+      navigate('/dashboard');
     } catch (err) {
       alert(err.response?.data?.error || err.message);
     }

@@ -1,19 +1,19 @@
 // src/App.js
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import Register       from './components/Register';
 import Login          from './components/Login';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword  from './components/ResetPassword';
 import Dashboard      from './components/Dashboard';
 
-// A small Navbar component that hides auth links on /dashboard
+// Navbar: hide auth links on dashboard
 function Navbar() {
-  const { pathname } = useLocation();                     // get current path :contentReference[oaicite:0]{index=0}
-  const hideAuthLinks = pathname === '/dashboard';        // true on Dashboard route
+  const { pathname } = useLocation();
+  const hideAuthLinks = pathname === '/dashboard';
 
   return (
     <nav>
-      { !hideAuthLinks ? (
+      {!hideAuthLinks ? (
         <>
           <Link to="/register">Register</Link> |{' '}
           <Link to="/login">Login</Link> |{' '}
@@ -21,7 +21,7 @@ function Navbar() {
         </>
       ) : (
         <Link to="/dashboard">Dashboard</Link>
-      ) }
+      )}
     </nav>
   );
 }
@@ -31,6 +31,8 @@ export default function App() {
     <Router>
       <Navbar />
       <Routes>
+        {/* redirect root → login */}
+        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/register"        element={<Register />} />
         <Route path="/login"           element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />

@@ -1,3 +1,4 @@
+// src/services/api.js
 import axios from 'axios';
 
 const api = axios.create({
@@ -5,9 +6,16 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-export const register       = creds => api.post('/register', creds);
-export const login          = creds => api.post('/login', creds);
-export const forgotPassword = data  => api.post('/forgot-password', data);
-export const resetPassword  = data  => api.post('/reset-password', data);
+// Auth & user management
+export const register       = data => api.post('/register', data);
+export const login          = data => api.post('/login', data);
+export const forgotPassword = data => api.post('/forgot-password', data);
+export const resetPassword  = data => api.post('/reset-password', data);
+
+// Admin-only: fetch all users
+export const getUsers = () =>
+  api.get('/users', {
+    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+  });
 
 export default api;
