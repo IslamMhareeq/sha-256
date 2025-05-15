@@ -1,5 +1,5 @@
 // backend/index.js
-require('dotenv').config(); // 1) Load .env first
+require('dotenv').config(); // Load environment variables
 
 const express = require('express');
 const mysql   = require('mysql2/promise');
@@ -13,17 +13,17 @@ app.use(express.json());
 
 // ── MySQL pool ────────────────────────────────────────────────────────────────
 const pool = mysql.createPool({
-  host:     process.env.DB_HOST,     // e.g. localhost
-  user:     process.env.DB_USER,     // e.g. root
-  password: process.env.DB_PASSWORD, // your MySQL password
-  database: process.env.DB_NAME,     // must be "app"
+  host:     process.env.DB_HOST,     
+  user:     process.env.DB_USER,     
+  password: process.env.DB_PASSWORD, 
+  database: process.env.DB_NAME,     // "app"
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 // SHA-256 helper
 const sha256 = str => crypto.createHash('sha256').update(str).digest('hex');
 
-// JWT for reset links
+// JWT reset-link generator
 function generateResetToken(username) {
   return jwt.sign(
     { username, purpose: 'password_reset' },
@@ -34,13 +34,12 @@ function generateResetToken(username) {
 
 // Auth middleware
 function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token      = authHeader?.split(' ')[1];
+  const header = req.headers['authorization'];
+  const token  = header && header.split(' ')[1];
   if (!token) return res.sendStatus(401);
-
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
     if (err) return res.sendStatus(403);
-    req.user = user;  // { username, role, iat, exp }
+    req.user = user;
     next();
   });
 }
@@ -49,29 +48,26 @@ function authenticateToken(req, res, next) {
 app.post('/api/register', async (req, res) => {
   try {
     const {
-      username,
-      password,
-      role = 'user',
-      first_name,
-      last_name,
-      id_number,
-      credit_card_number,
-      valid_date,
-      cvc
+      username, password, role = 'user',
+      first_name, last_name, id_number,
+      credit_card_number, valid_date, cvc
     } = req.body;
 
+    // Reject any quotes or comment markers in password inputs
+    if (/[\'\-]/.test(password)) {
+      return res.status(400).json({ error: 'Password contains invalid characters.' });
+    }
+
     const hash = sha256(password);
-    await pool.query(
+    await pool.execute(
       `INSERT INTO userse
-        (username, password, role,
-         first_name, last_name, id_number,
-         credit_card_number, valid_date, cvc)
+         (username, password, role,
+          first_name, last_name, id_number,
+          credit_card_number, valid_date, cvc)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        username, hash, role,
-        first_name, last_name, id_number,
-        credit_card_number, valid_date, cvc
-      ]
+      [username, hash, role,
+       first_name, last_name, id_number,
+       credit_card_number, valid_date, cvc]
     );
 
     res.json({ message: 'Registered successfully.' });
@@ -80,29 +76,26 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-/// ── 2) LOGIN (INJECTION DEMO: "admin' --") ───────────────────────────────────
+// ── 2) LOGIN ───────────────────────────────────────────────────────────────────
 app.post('/api/login', async (req, res) => {
   try {
-    let { username = '', password = '' } = req.body;
+    const { username = '', password = '' } = req.body;
 
-    // Detect injection marker "--" and strip off everything from it onward,
-    // then trim any trailing single-quote.
-    if (username.includes('--')) {
-      username = username
-        .split('--')[0]    // take left side of "--"
-        .trim()            // remove spaces
-        .replace(/'$/, ''); // drop trailing apostrophe
+    // Reject SQL‐injection characters in password
+    if (password && /[\'\-]/.test(password)) {
+      return res.status(401).json({ error: 'Invalid credentials.' });
     }
 
-    // Build insecure SQL: if password is blank, skip that check entirely.
-    let sql = "SELECT username, role FROM userse WHERE username = '" + username + "'";
+    // Build parameterized query; skip password check if blank
+    let sql    = 'SELECT username, role, password FROM userse WHERE username = ?';
+    const args = [username];
+
     if (password) {
-      const hash = crypto.createHash('sha256').update(password).digest('hex');
-      sql += " AND password = '" + hash + "'";
+      sql  += ' AND password = ?';
+      args.push(sha256(password));
     }
 
-    const [rows] = await pool.query(sql);
-
+    const [rows] = await pool.execute(sql, args);
     if (!rows.length) {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
@@ -119,14 +112,12 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-
 // ── 3) FORGOT PASSWORD ─────────────────────────────────────────────────────────
 app.post('/api/forgot-password', async (req, res) => {
   try {
     const { username } = req.body;
-    const [rows] = await pool.query(
-      'SELECT 1 FROM userse WHERE username = ?',
-      [username]
+    const [rows] = await pool.execute(
+      'SELECT 1 FROM userse WHERE username = ?', [username]
     );
 
     let resetLink = null;
@@ -150,17 +141,14 @@ app.post('/api/reset-password', async (req, res) => {
   try {
     const { token, password } = req.body;
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-
-    if (payload.purpose !== 'password_reset') {
-      return res.status(400).json({ error: 'Invalid token.' });
+    if (payload.purpose !== 'password_reset' || /[\'\-]/.test(password)) {
+      return res.status(400).json({ error: 'Invalid token or password.' });
     }
-
     const hash = sha256(password);
-    await pool.query(
+    await pool.execute(
       'UPDATE userse SET password = ? WHERE username = ?',
       [hash, payload.username]
     );
-
     res.json({ message: 'Password has been reset.' });
   } catch {
     res.status(400).json({ error: 'Invalid or expired token.' });
@@ -169,21 +157,14 @@ app.post('/api/reset-password', async (req, res) => {
 
 // ── 5) LIST USERS (ADMIN ONLY) ────────────────────────────────────────────────
 app.get('/api/users', authenticateToken, async (req, res) => {
-  if (req.user.role !== 'admin') {
-    return res.sendStatus(403);
-  }
+  if (req.user.role !== 'admin') return res.sendStatus(403);
 
-  try {
-    const [rows] = await pool.query(`
-      SELECT
-        username, role, first_name, last_name,
-        id_number, credit_card_number, valid_date, cvc
+  const [rows] = await pool.execute(`
+    SELECT username, role, first_name, last_name,
+           id_number, credit_card_number, valid_date, cvc
       FROM userse
-    `);
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  `);
+  res.json(rows);
 });
 
 // ── START SERVER ─────────────────────────────────────────────────────────────
